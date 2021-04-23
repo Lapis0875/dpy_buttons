@@ -1,7 +1,8 @@
+from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from enum import Enum
-from typing import Optional
+from typing import Optional, List, Tuple
 from logging import getLogger
 
 import discord
@@ -11,7 +12,9 @@ from discord_buttons.type_hints import JSON, CoroutineFunction
 
 __all__ = (
     'ButtonStyle',
-    'Button'
+    'Button',
+    'getButtonFromCache',
+    'getButtonsFromCache'
 )
 
 btn_logger = getLogger('discord_buttons')
@@ -43,6 +46,17 @@ class ButtonStyle(Enum):
             if enum is None:
                 raise ValueError('Invalid value is passed in ButtonStyle.parse(value) : {} is not a valid button style integer.'.format(value))
             return enum
+
+
+buttonCache = {}
+
+
+def getButtonFromCache(custom_id: str) -> Optional[Button]:
+    return buttonCache.get(custom_id)
+
+
+def getButtonsFromCache() -> Tuple[Button, ...]:
+    return tuple(buttonCache.values())
 
 
 class Button:
@@ -78,6 +92,9 @@ class Button:
             raise ValueError('Button object can have either custom_id (color styles) or url (style==url).')
         self._callback: Optional[CoroutineFunction] = None
 
+        if self.custom_id:
+            buttonCache.update({self.custom_id: self})
+
     def toJson(self) -> JSON:
         data = {
             'type': ComponentType.Button.value,
@@ -99,20 +116,6 @@ class Button:
 
         self._callback = callback
 
-    async def invoke(
-            self,
-            message: discord.Message,
-            user: discord.User,
-            button: 'Button',
-            interaction_id: str,
-            raw_data: JSON
-    ):
+    async def invoke(self, ctx: ButtonContext):
         if self._callback is not None:
-            ctx = ButtonContext(
-                message,
-                user,
-                button,
-                interaction_id,
-                raw_data
-            )
             return await self._callback(ctx)

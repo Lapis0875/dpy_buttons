@@ -12,7 +12,7 @@ from sys import stdout
 
 from .channel import update
 from .context import ButtonContext
-from .button import ButtonStyle, Button
+from .button import *
 from .client import *
 
 update()    # Replace features in discord.py to support buttons feature.
