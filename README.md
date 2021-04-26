@@ -36,7 +36,7 @@ btn_red = Button(label='Red Button!', style=ButtonStyle.Red, custom_id='red_btn'
 btn_url = Button(label='URL Button!', style=ButtonStyle.URL, url='https://...')
 
 # Register button click handler
-@btn.listen  # Thinking about name 'on_click'
+@btn_red.listen  # Thinking about name 'on_click'
 async def handler(ctx: ButtonContext):
     # send message on channel
     # sent messages are wrapped as a objet 'ButtonMessage', which extends discord.py's Message and contains Button objects
