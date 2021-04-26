@@ -56,10 +56,12 @@ async def on_message(msg):
     if msg.content == '!buttons':
         await msg.channel.send(
             # Buttons can be wrapped in 2-dimensional array
-            # Internally, thus is implemented using component with type 1.
+            # Internally, this is implemented using component with type 1.
             buttons=[
                 [Button('Blurple Button!, ButtonStyle.Blurple, 'blurple_btn'), Button('Gray Button!', ButtonStyle.Gray, 'gray_btn')]
-                [btn_red, Button('Green Button!', ButtonStyle.Green, 'green_btn')]
+                # You can get Button instance which is created in other code using ButtonCache().get_button(custom_id)  *URL Buttons are not cached, so they can't be retrieved.
+                # ButtonCache implements Singleton pattern, so whenever you create instance, you can get same object.
+                [ButtonCache().get_button('red_btn'), Button('Green Button!', ButtonStyle.Green, 'green_btn')]
                 [btn_url]
             ]
         )
