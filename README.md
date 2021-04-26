@@ -2,9 +2,10 @@
 
 wrapper library for discord.py, providing discord buttons feature.
 
-## NOTICE
+## Future of the library
 Will be merged into discord interaction api library, [discord_interactions](https://github.com/Lapis0875/discord_interactions.py)
-Future structure :
+
+1. Future structure :
 ```
 discord_interactions
 ㄴslash_commands
@@ -14,6 +15,17 @@ discord_interactions
     ㄴ ..
   ㄴ ..     // Prepare for future components
 ```
+
+2. Future implementation
+```py
+# Before
+class Button: ...
+
+# After
+class Component: ... # Parent class for all components
+class Button(Component): ...
+```
+
 
 ## Example
 ```python
