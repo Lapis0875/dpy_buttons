@@ -27,7 +27,7 @@ setup(
     # Dependencies : This project depends on module 'discord.py'
     install_requires=["discord.py>=1.7.1"],
     # Module`s python requirement
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     # Keywords about the module
     keywords=["discord api", "discord.py", "discord buttons"],
     # Tags about the module
