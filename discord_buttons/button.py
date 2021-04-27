@@ -2,27 +2,23 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 from enum import Enum
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, ClassVar, Dict
 from logging import getLogger
 
 import discord
 
-from discord_buttons.context import ButtonContext
+from discord_buttons.component import Component, ComponentType
 from discord_buttons.type_hints import JSON, CoroutineFunction
 
 __all__ = (
     'ButtonStyle',
     'Button',
-    'getButtonFromCache',
-    'getButtonsFromCache'
+    'ButtonCache'
 )
 
+from discord_buttons.utils import SingletonMeta
+
 btn_logger = getLogger('discord_buttons')
-
-
-class ComponentType(Enum):
-    Group = 1
-    Button = 2
 
 
 class ButtonStyle(Enum):
@@ -48,18 +44,27 @@ class ButtonStyle(Enum):
             return enum
 
 
-buttonCache = {}
+class ButtonCache(metaclass=SingletonMeta):
+    __slots__ = (
+        'cache'
+    )
+
+    cache: Dict[str, Button]
+
+    def __init__(self):
+        self.cache: Dict[str, Button] = {}
+
+    def get_button(self, custom_id: str) -> Optional[Button]:
+        return self.cache.get(custom_id)
+
+    def get_buttons(self) -> Tuple[Button, ...]:
+        return tuple(self.cache.values())
+
+    def register_button(self, custom_id: str, button: Button) -> None:
+        self.cache[custom_id] = button
 
 
-def getButtonFromCache(custom_id: str) -> Optional[Button]:
-    return buttonCache.get(custom_id)
-
-
-def getButtonsFromCache() -> Tuple[Button, ...]:
-    return tuple(buttonCache.values())
-
-
-class Button:
+class Button(Component):
     label: str
     style: ButtonStyle
     custom_id: Optional[str]
@@ -67,7 +72,7 @@ class Button:
     __slots__ = ('label', 'style', 'custom_id', 'url', '_callback')
 
     @classmethod
-    def fromJson(
+    def from_json(
             cls,
             data: JSON
     ):
@@ -77,6 +82,12 @@ class Button:
         url: Optional[str] = data.get('url')
         return cls(label, ButtonStyle.parse(style), custom_id, url)
 
+    # Experimental
+    @classmethod
+    def from_json_with_callback(cls, data):
+        btn = cls.from_json(data)
+        return btn.listen
+
     def __init__(
             self,
             label: str,
@@ -84,6 +95,7 @@ class Button:
             custom_id: Optional[str]=None,
             url: Optional[str]=None
     ):
+        super(Button, self).__init__(type=ComponentType.Button)
         self.label = label if isinstance(label, str) else str(label)
         self.style = style  # Raw value must be parsed in Button.fromJson()
         self.custom_id = custom_id or None
@@ -93,14 +105,14 @@ class Button:
         self._callback: Optional[CoroutineFunction] = None
 
         if self.custom_id:
-            buttonCache.update({self.custom_id: self})
+            ButtonCache().register_button(self.custom_id, self)
 
-    def toJson(self) -> JSON:
-        data = {
-            'type': ComponentType.Button.value,
+    def to_json(self) -> JSON:
+        data = super(Button, self).to_json()
+        data.update({
             'style': self.style.value,
             'label': self.label
-        }
+        })
         if self.custom_id:
             data['custom_id'] = self.custom_id
         if self.url:
@@ -108,14 +120,23 @@ class Button:
         return data
 
     def __repr__(self) -> str:
+        return 'discord.interaction.components.Button(label={},style={},custom_id={},url={})'.format(self.label, self.style.name, self.custom_id, self.url)
+
+    def __str__(self) -> str:
         return 'Discord.Button(label={},style={},custom_id={},url={})'.format(self.label, self.style.name, self.custom_id, self.url)
 
     def listen(self, callback: CoroutineFunction):
+        """
+        Register coroutine function object as a callback for button click event.
+        :param callback: coroutine function object.
+        """
         if not asyncio.iscoroutinefunction(callback):
             raise TypeError('Callback function for Button object must be a coroutine function!')
 
         self._callback = callback
 
-    async def invoke(self, ctx: ButtonContext):
+    async def invoke(self, ctx: 'ButtonContext'):
         if self._callback is not None:
             return await self._callback(ctx)
+        else:
+            return await ctx.respond()

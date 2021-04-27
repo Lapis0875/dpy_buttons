@@ -10,10 +10,11 @@ Wrapper supporting discord buttons feature.
 import logging
 from sys import stdout
 
-from .channel import update
+from .patch import update
 from .context import ButtonContext
 from .button import *
 from .client import *
+from .message import ComponentMessage
 
 update()    # Replace features in discord.py to support buttons feature.
 

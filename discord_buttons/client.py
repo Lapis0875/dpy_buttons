@@ -3,11 +3,13 @@ from typing import List, Optional
 from logging import getLogger
 
 import discord
-from discord import Client, AutoShardedClient
+from discord import Client, AutoShardedClient, Guild, Member, User
+from discord.abc import Messageable
 from discord.ext.commands.bot import BotBase
 from discord.http import Route
 
-from discord_buttons import Button, getButtonFromCache, ButtonContext
+from discord_buttons import Button, ButtonCache, ButtonContext
+from discord_buttons.message import ComponentMessage
 from discord_buttons.type_hints import JSON
 
 __all__ = (
@@ -37,39 +39,49 @@ class ButtonHandler:
         btn_logger.debug("ButtonHandler : 'INTERACTION_CREATE' Event received in websocket. Debugging gateway payload :\n{}".format(
             json.dumps(msg, ensure_ascii=False, indent=2)
         ))
+        data = msg['d']
         btn_logger.debug('ButtonHandler : Event data from gateway payload : {}'.format(
-            json.dumps(msg['d'], ensure_ascii=False, indent=2)
+            json.dumps(data, ensure_ascii=False, indent=2)
         ))
 
-        custom_id = msg['d']['data']['custom_id']
-        btn: Optional[Button] = getButtonFromCache(custom_id)
-        print(btn)
+        custom_id = data['data']['custom_id']
+        btn: Optional[Button] = ButtonCache().get_button(custom_id)
+        btn_logger.debug(f'btn : {btn}')
         if btn is not None:
-            guild_id: int = msg['d']['guild_id']
-            try:
-                # Not DMChannel
-                guild: discord.Guild = self.get_guild(guild_id) or (await self.fetch_guild(guild_id))
-            except:
-                # DMChannel
-                guild = None
-            print(guild)
+            data = msg['d']
+            state = self._get_state()
 
-            channel_id: int = msg['d']['channel_id']
-            channel: discord.abc.Messageable = guild.get_channel(channel_id) if guild is not None else (await self.fetch_channel(channel_id))
-            print(channel)
+            channel_id: int = data['channel_id']
+            btn_logger.debug(f'channel.id : {channel_id}')
 
-            user_id: int = msg['d']['member']['user']['id']
-            if guild is not None:
-                user: discord.Member = guild.get_member(user_id) or (await guild.fetch_member(user_id))
-            else:
-                user: discord.User = self.get_user(user_id) or (await self.fetch_user(user_id))
-            print(user)
+            if 'guild_id' in data and 'member' in data:
+                # Interaction from guild
+                guild_id: int = data['guild_id']
+                btn_logger.debug('Interaction from guild : id = {}'.format(guild_id))
+                guild: Optional[Guild] = self.get_guild(guild_id)
+                btn_logger.debug('- Guild : {}'.format(guild))
+                if guild is not None:
+                    member: Member = Member(data=data['member'], guild=guild, state=state)
+                    btn_logger.debug('member : {}'.format(member))
+                    channel: Optional[Messageable] = guild.get_channel(channel_id)
+                    btn_logger.debug('guild.get_channel(channel.id) : {}'.format(channel))
 
-            msg_id: int = msg['d']['message']['id']
-            msg: discord.Message = await channel.fetch_message(msg_id)
-            await btn.invoke(
-                ButtonContext(msg, user, btn, msg['d']['id'], raw_data=msg['d'])
-            )
+                msg: ComponentMessage = ComponentMessage(state=state, channel=channel, data=data['message'])
+                await btn.invoke(
+                    ButtonContext(msg, member, btn, data['id'], raw_data=data)
+                )
+
+            elif 'user' in data:
+                # Interaction from channel
+                user: User = User(data=data['user'], state=state)
+                btn_logger.debug('user : {}'.format(user))
+                channel: Optional[Messageable] = self.get_channel(channel_id)
+                btn_logger.debug('Client.get_channel(channel.id) : {}'.format(channel))
+
+                msg: ComponentMessage = ComponentMessage(state=state, channel=channel, data=data['message'])
+                await btn.invoke(
+                    ButtonContext(msg, user, btn, data['id'], raw_data=data)
+                )
 
 
 class ButtonClient(Client, ButtonHandler):

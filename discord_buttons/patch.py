@@ -1,3 +1,4 @@
+import json
 from logging import getLogger
 from typing import List, Union
 
@@ -7,12 +8,14 @@ from discord.http import HTTPClient, Route
 
 # Backups
 from discord_buttons.button import ComponentType, Button
+from discord_buttons.message import ComponentMessage
 from discord_buttons.type_hints import JSON
 
 btn_logger = getLogger('discord_buttons')
 
 Messageable_send = Messageable.send
 HTTTPClient_send_message = HTTPClient.send_message
+Route_BASE = Route.BASE
 
 # Helper func
 def _pack_component(type: int, btn: Button) -> JSON:
@@ -46,8 +49,8 @@ async def send(
         allowed_mentions=None,
         reference=None,
         mention_author=None,
-        buttons=None
-):
+        components=None
+) -> ComponentMessage:
     """|coro|
 
             Sends a message to the destination with the content given.
@@ -103,7 +106,7 @@ async def send(
                 If set, overrides the :attr:`~discord.AllowedMentions.replied_user` attribute of ``allowed_mentions``.
 
             # New parameters added in discord_buttons
-            buttons: Optional[List[:class:'~discord_buttons.Button']]
+            components: Optional[List[:class:'~discord_buttons.Button']]
                 List of Button objects to send with message.
 
             Raises
@@ -150,29 +153,29 @@ async def send(
 
     # Added in discord_buttons to support discord buttons feature.
     # buttons : Union[List[Button], Button]
-    components: List[JSON] = []
-    if buttons is not None:
-        btn_logger.debug('discord.abc.Messageable.send#patched > Parsing buttons : {}'.format(buttons))
-        if not len(buttons):
-            components = []
-        elif isinstance(buttons[0], Button):     # Not a nested button array.
+    parsed_components: List[JSON] = []
+    if components is not None:
+        btn_logger.debug('discord.abc.Messageable.send#patched > Parsing components : {}'.format(components))
+        if not len(components):
+            parsed_components = []
+        elif not components[0].type == ComponentType.Group:     # Not a nested component array.
             # Pack with list
-            components = [{
+            parsed_components = [{
                 'type': ComponentType.Group.value,
-                'components': [button.toJson() for button in buttons]
+                'components': [component.to_json() for component in components]
             }]
         else:
-            components = [
+            parsed_components = [
                 {
                     'type': ComponentType.Group.value,
                     'components': [
-                        btn.toJson()
-                        for btn in line
+                        component.to_json()
+                        for component in line
                     ]
                 }
-                for line in buttons
+                for line in components
             ]
-        btn_logger.debug('discord.abc.Messageable.send#patched > Parsed buttons into components : {}'.format(components))
+        btn_logger.debug('discord.abc.Messageable.send#patched > Parsed buttons into components : {}'.format(parsed_components))
 
     if file is not None and files is not None:
         raise InvalidArgument('cannot pass both file and files parameter to send()')
@@ -184,7 +187,7 @@ async def send(
         try:
             data = await state.http.send_files(channel.id, files=[file], allowed_mentions=allowed_mentions,
                                                content=content, tts=tts, embed=embed, nonce=nonce,
-                                               message_reference=reference, components=components)
+                                               message_reference=reference, components=parsed_components)
         finally:
             file.close()
 
@@ -197,19 +200,27 @@ async def send(
         try:
             data = await state.http.send_files(channel.id, files=files, content=content, tts=tts,
                                                embed=embed, nonce=nonce, allowed_mentions=allowed_mentions,
-                                               message_reference=reference, components=components)
+                                               message_reference=reference, components=parsed_components)
         finally:
             for f in files:
                 f.close()
     else:
         data = await state.http.send_message(channel.id, content, tts=tts, embed=embed,
                                              nonce=nonce, allowed_mentions=allowed_mentions,
-                                             message_reference=reference, components=components)
+                                             message_reference=reference, components=parsed_components)
 
     ret = state.create_message(channel=channel, data=data)
     if delete_after is not None:
         await ret.delete(delay=delete_after)
-    return ret
+
+    print('patched send debug : packing with ButtonMessage object...')
+    print(json.dumps(data, ensure_ascii=False, indent=2))
+    if 'message_reference' in data:
+        # Issue : 'message_reference' object in message response data lacks 'channel_id', so copy it from object 'referenced_message'.
+        data['message_reference']['channel_id'] = data['referenced_message']['channel_id']
+
+    btn_msg: ComponentMessage = ComponentMessage.fromMessage(ret, data)
+    return btn_msg
 
 
 # 'send_message' method in 'discord.http.HTTPClient'
@@ -289,7 +300,9 @@ def send_message(
   ]
 }
         """
+        btn_logger.debug('components : {}'.format(components))
         payload['components'] = components
+        btn_logger.debug('payload : {}'.format(json.dumps(payload, ensure_ascii=False, indent=2)))
 
     return self.request(r, json=payload)
 
@@ -351,6 +364,7 @@ def update():
     Messageable.send = send
     HTTPClient.send_message = send_message
     HTTPClient.send_files = send_files
+    Route.BASE = 'https://discord.com/api/v8'
 
 
 def check():
